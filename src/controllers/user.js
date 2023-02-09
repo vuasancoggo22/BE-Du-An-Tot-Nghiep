@@ -1,5 +1,6 @@
 import User from "../models/user";
 import bcrypt from "bcrypt";
+import booking from "../models/booking";
 export const listUser = async (req, res) => {
   try {
     const listUser = await User.find({}).sort({ createdAt: -1 }).exec();
@@ -110,7 +111,7 @@ export const updateUserpassword = async (req, res) => {
       } else {
         const saltRounds = 10;
         newPassword = await bcrypt.hash(newPassword, saltRounds);
-        console.log(newPassword);
+        
         const update = {
           password: newPassword,
         };
@@ -133,7 +134,7 @@ export const updateUserpassword = async (req, res) => {
 
 export const resetPassword = async (req, res) => {
   const { password, confirmPassword } = req.body;
-  console.log(req.user);
+ 
   const phoneNumber = req.user.phone_number.replace("+84", 0);
   try {
     if (password !== confirmPassword) {
@@ -175,5 +176,25 @@ export const checkPhoneNumberValid  = async (req,res) => {
     return res.json(
       error.message
     )
+  }
+}
+
+export const loyalCustomer = async (req,res) =>{
+  const {month,year} = req.query
+  try {
+    if(!month && !year){
+      let loyalCustomer = await User.find({role : 0}).select("-password").exec()
+      
+      for(let i = 0 ; i < loyalCustomer.length; i++){
+          const data = await booking.countDocuments({userId : loyalCustomer[i]._id,status:4}).exec()
+          loyalCustomer[i].usedQuantity = data
+      }
+      loyalCustomer = loyalCustomer.filter(item => item.usedQuantity > 0)
+      loyalCustomer.sort((a, b) => b.usedQuantity - a.usedQuantity)
+      loyalCustomer = loyalCustomer.slice(0,9)
+      return res.json(loyalCustomer)
+    }
+  } catch (error) {
+    res.json(error)
   }
 }

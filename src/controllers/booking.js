@@ -3,24 +3,43 @@ import Booking from "../models/booking";
 import User from "../models/user";
 import moment from "moment";
 import Voucher from "../models/voucher";
-
+import Service from "../models/service";
+import service from "../models/service";
 export const createBooking = async (req, res) => {
+  const { user } = req.query;
   try {
-    const booking = await new Booking({
-      name: req.body.name,
-      userId: req.query.user,
-      phoneNumber: req.body.phoneNumber,
-      note: req.body.note,
-      services: req.body.services,
-      employeeId: req.body.employeeId,
-      status: req.body.status,
-      date: req.body.date,
-      time: req.body.time,
-      age: req.body.age,
-      gender: req.body.gender,
-      bookingPrice: req.body.bookingPrice,
-    }).save();
-    return res.json(booking);
+    if (!user) {
+      const booking = await new Booking({
+        name: req.body.name,
+        phoneNumber: req.body.phoneNumber,
+        note: req.body.note,
+        services: req.body.services,
+        employeeId: req.body.employeeId,
+        status: req.body.status,
+        date: req.body.date,
+        time: req.body.time,
+        age: req.body.age,
+        gender: req.body.gender,
+        bookingPrice: req.body.bookingPrice,
+      }).save();
+      return res.json(booking);
+    } else if (user) {
+      const booking = await new Booking({
+        name: req.body.name,
+        phoneNumber: req.body.phoneNumber,
+        note: req.body.note,
+        userId: req.query.user,
+        services: req.body.services,
+        employeeId: req.body.employeeId,
+        status: req.body.status,
+        date: req.body.date,
+        time: req.body.time,
+        age: req.body.age,
+        gender: req.body.gender,
+        bookingPrice: req.body.bookingPrice,
+      }).save();
+      return res.json(booking);
+    }
   } catch (error) {
     return res.status(400).json({
       message: error.message,
@@ -60,25 +79,35 @@ export const updateStatus = async (req, res) => {
     if (req.body.status == 4) {
       const booking = await Booking.findOneAndUpdate(
         { _id: req.params.id },
-        req.body
+        req.body,
+        { new: true }
       ).exec();
       await User.findOneAndUpdate(
         { _id: booking.userId },
         { $push: { serviceUsed: booking.services } }
       );
-      if(booking.voucher){
-        const voucher  = await Voucher.findOne({_id : booking.voucher}).exec()
-        await Voucher.findOneAndUpdate({_id : booking.voucher},{quantity : voucher.quantity -1}).exec()
-        if(booking.userId){
-        await Voucher.findOneAndUpdate({_id : booking.voucher},{$push : {userUsed : booking.userId}}).exec()
-      }
+      if (booking.voucher) {
+        const voucher = await Voucher.findOne({ _id: booking.voucher }).exec();
+        await Voucher.findOneAndUpdate(
+          { _id: booking.voucher },
+          { quantity: voucher.quantity - 1 }
+        ).exec();
+        if (booking.userId) {
+          await Voucher.findOneAndUpdate(
+            { _id: booking.voucher },
+            { $push: { userUsed: booking.userId } }
+          ).exec();
+        }
       }
       return res.json(booking);
     } else {
       const booking = await Booking.findOneAndUpdate(
         { _id: req.params.id },
-        req.body
-      ).exec();
+        req.body,
+        { new: true }
+      )
+        .populate("employeeId")
+        .exec();
       return res.json(booking);
     }
   } catch (error) {
@@ -92,7 +121,7 @@ export const userBookingList = async (req, res) => {
   try {
     const listBooking = await Booking.find({ userId: req.params.id })
       .populate("services.serviceId")
-      .populate({path: "employeeId",select : ['name']})
+      .populate({ path: "employeeId", select: ["name"] })
       .exec();
     return res.json(listBooking);
   } catch (error) {
@@ -185,7 +214,6 @@ export const bookingGenderStatistics = async (req, res) => {
 };
 
 export const employeeBookingList2 = async (req, res) => {
-  console.log(req.user);
   try {
     const listBooking = await Booking.find({
       employeeId: req.user.employeeId,
@@ -195,5 +223,41 @@ export const employeeBookingList2 = async (req, res) => {
     return res.status(400).json({
       message: error.message,
     });
+  }
+};
+
+export const statusStatistic = async (req, res) => {
+  
+  const year = Number(req.query.year);
+  try {
+    let allData = []
+   const serviceId = await Service.distinct('_id')
+    for(let svid of serviceId){
+      let datas = []
+      const service = await Service.findOne({_id : svid}).exec()
+      for(let i = 1 ; i<13; i++){
+        const documents = await Booking.aggregate([{$match:
+          {$and : [
+            {$expr:{$eq:[{$month:"$date"},i]}},
+            {$expr:{$eq:[{$year:"$date"},year]}},
+            {$expr:{$eq:["$status" ,2]}},
+            {"services.serviceId" :svid}
+          ]}
+        }])
+       
+        
+        datas.push(documents.length)
+      }
+      allData.push({
+        service,
+        datas
+      })
+    }
+    return res.json({
+      allData,
+      totalServices : serviceId.length
+    })
+  } catch (error) {
+    return res.status(400).json(error.message)
   }
 };
